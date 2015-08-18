@@ -131,7 +131,7 @@ EXPORT BOOL CALL InitiateAudio(AUDIO_INFO Audio_Info) {
 
 	// TODO: Move from SoundDriver to a configuration class
 	snd->configAIEmulation = true;
-	snd->configSyncAudio   = true;
+	snd->configSyncAudio   = false;
 	snd->configForceSync   = false;
 	snd->configMute		  = false;
 	snd->configHLE		  = true;
