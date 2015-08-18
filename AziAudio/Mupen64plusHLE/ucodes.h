@@ -22,8 +22,6 @@
 #ifndef UCODES_H
 #define UCODES_H
 
-#include <stdint.h>
-
 struct hle_t;
 
 
@@ -143,4 +141,3 @@ void jpeg_decode_PS(struct hle_t* hle);
 void jpeg_decode_OB(struct hle_t* hle);
 
 #endif
-

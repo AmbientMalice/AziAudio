@@ -22,8 +22,6 @@
 #ifndef HLE_INTERNAL_H
 #define HLE_INTERNAL_H
 
-#include <stdint.h>
-
 #include "ucodes.h"
 
 /* rsp hle internal state - internal usage only */
@@ -75,4 +73,3 @@ struct hle_t
 };
 
 #endif
-

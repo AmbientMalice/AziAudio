@@ -8,28 +8,39 @@
 * GNU/GPLv2 http://www.gnu.org/licenses/gpl-2.0.html                        *
 *                                                                           *
 ****************************************************************************/
-
-#ifndef __MYTYPES_DOT_H__
-#define __MYTYPES_DOT_H__
-
-#define	u8	unsigned char
-#define s8	signed char
-#define u16	unsigned short
-#define s16	signed short
-#define u32	unsigned long
-#define s32	signed long
-#define u64	unsigned __int64
-#define s64	signed __int64
 /*
-#ifndef WIN32
-#define BYTE   unsigned char
-#define SBYTE  signed char
-#define WORD   unsigned short
-#define SWORD  signed short
-#define DWORD  unsigned long
-#define SDWORD signed long
-#define QWORD  unsigned __int64
-#define SQWORD signed __int64
-#endif
+NoSound Driver to demonstrate how to use the SoundDriver interface
 */
-#endif
+
+#pragma once
+#include "common.h"
+#include "SoundDriver.h"
+
+
+class NoSoundDriver :
+	public SoundDriver
+{
+public:
+	NoSoundDriver() {};
+	~NoSoundDriver() {};
+
+	// Setup and Teardown Functions
+	BOOL Initialize();
+	void DeInitialize();
+
+	// Management functions
+	void AiUpdate(BOOL Wait);
+	void StopAudio();
+	void StartAudio();
+	void SetFrequency(DWORD Frequency);
+
+protected:
+
+	bool dllInitialized;
+	LARGE_INTEGER perfTimer;
+	LARGE_INTEGER perfFreq;
+	LARGE_INTEGER perfLast;
+	LARGE_INTEGER countsPerSample;
+
+	bool isPlaying;
+};

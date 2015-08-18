@@ -11,14 +11,29 @@
 
 #ifndef _COMMON_DOT_H_
 #define _COMMON_DOT_H_
+
+#if defined (_XBOX)
+#include <xtl.h>
+#include "XBox/xbox_depp.h"
+#else
 #include <windows.h>
+#include <commctrl.h>
+#endif
+
 #include <stdio.h>
+#include <assert.h>
 
 //#define ENABLEPROFILING
 
-#define USE_XAUDIO2
+#if defined(_MSC_VER)
+#define SEH_SUPPORTED
+#endif
 
-#include "mytypes.h"
+#ifndef XAUDIO_LIBRARIES_UNAVAILABLE
+#define USE_XAUDIO2
+#endif
+
+#include "my_types.h"
 
 typedef struct {
 	u16 Version;
@@ -43,10 +58,41 @@ extern rSettings RegSettings;
 unsigned long GenerateCRC (unsigned char *data, int size);
 
 #ifdef USE_XAUDIO2
-#define PLUGIN_VERSION "Azimer's XA2 Audio v0.70 WIP 5"
+#define PLUGIN_NAME     "XA2 Audio"
 #else
-#define PLUGIN_VERSION "Azimer's DS8 Audio v0.70 WIP 5"
+#define PLUGIN_NAME     "DS8 Audio"
 #endif
+
+#ifdef DEVBUILD
+#ifdef __GNUC__
+#define PLUGIN_BUILDSYS "Mingw"
+#else
+#define PLUGIN_BUILDSYS "MSVC"
+#endif
+#ifdef _DEBUG
+#define PLUGIN_DEBUG " (" PLUGIN_BUILDSYS " Debug)"
+#else
+#define PLUGIN_DEBUG " (" PLUGIN_BUILDSYS ")"
+#endif
+#else
+#ifdef _DEBUG
+#define PLUGIN_DEBUG " (Debug)"
+#else
+#define PLUGIN_DEBUG ""
+#endif
+#endif
+
+#define PLUGIN_RELEASE " v0.70 "
+#define PLUGIN_BUILD "WIP 6" \
+	   PLUGIN_DEBUG 
+
+#define PLUGIN_VERSION \
+"Azimer's " \
+PLUGIN_NAME \
+PLUGIN_RELEASE \
+PLUGIN_BUILD
+
+
 #ifdef ENABLEPROFILING
 
 	extern u64 ProfileStartTimes[30];
@@ -98,3 +144,9 @@ unsigned long GenerateCRC (unsigned char *data, int size);
 #	define PrintProfiles() //
 #	define ClearProfiles()//
 #endif
+
+/*
+ * `strcpy` with bounds checking
+ * This basically is a portable variation of Microsoft's `strcpy_s`.
+ */
+extern int safe_strcpy(char* dst, size_t limit, const char* src);

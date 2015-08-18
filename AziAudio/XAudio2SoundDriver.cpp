@@ -20,6 +20,7 @@ static IXAudio2SourceVoice* g_source;
 static IXAudio2MasteringVoice* g_master;
 
 static bool audioIsPlaying = false;
+static bool canPlay = false;
 
 static BYTE bufferData[10][44100 * 4];
 static int bufferLength[10];
@@ -51,7 +52,7 @@ XAudio2SoundDriver::~XAudio2SoundDriver()
 static HANDLE hMutex;
 
 
-BOOL XAudio2SoundDriver::Initialize(HWND hwnd)
+BOOL XAudio2SoundDriver::Initialize()
 {
 	if (g_source != NULL)
 	{
@@ -100,6 +101,8 @@ BOOL XAudio2SoundDriver::Setup()
 		CoUninitialize();
 		return -2;
 	}
+	canPlay = true;
+
 	// Load Wave File
 
 	WAVEFORMATEX wfm;
@@ -108,7 +111,7 @@ BOOL XAudio2SoundDriver::Setup()
 
 	wfm.wFormatTag = WAVE_FORMAT_PCM;
 	wfm.nChannels = 2;
-	wfm.nSamplesPerSec = 32000;
+	wfm.nSamplesPerSec = 44100;
 	wfm.wBitsPerSample = 16; // TODO: Allow 8bit audio...
 	wfm.nBlockAlign = wfm.wBitsPerSample / 8 * wfm.nChannels;
 	wfm.nAvgBytesPerSec = wfm.nSamplesPerSec * wfm.nBlockAlign;
@@ -151,7 +154,7 @@ void XAudio2SoundDriver::Teardown()
 	}
 	
 	if (g_master != NULL) g_master->DestroyVoice();
-	if (g_engine != NULL)
+	if (g_engine != NULL && canPlay)
 	{
 		g_engine->StopEngine();
 		g_engine->Release();
@@ -170,27 +173,15 @@ void XAudio2SoundDriver::Teardown()
 
 void XAudio2SoundDriver::SetFrequency(DWORD Frequency)
 {
-	Frequency = (Frequency+25) - ((Frequency+25) % 50);
-	/*if (Frequency < 45000 && Frequency > 43000) {
-		Frequency = 44100;
-	}
-	else if (Frequency < 33000 && Frequency > 31000)	{
-		Frequency = 32000;
-	}
-	else if (Frequency < 25000 && Frequency > 20000)	{
-		Frequency = 22050;
-	}
-	else if (Frequency < 15000 && Frequency > 10000) {
-		Frequency = 11025;
-	}*/
-	Setup();
-	g_source->SetSourceSampleRate(Frequency);
 	cacheSize = (Frequency / 25) * 4;// (((Frequency * 4) / 100) & ~0x3) * 8;
+	if (Setup() < 0) /* failed to apply a sound device */
+		return;
+	g_source->SetSourceSampleRate(Frequency);
 }
 
 DWORD XAudio2SoundDriver::AddBuffer(BYTE *start, DWORD length)
 {
-	if (length == 0) {
+	if (length == 0 || g_source == NULL) {
 		*AudioInfo.AI_STATUS_REG = 0;
 		*AudioInfo.MI_INTR_REG |= MI_INTR_AI;
 		AudioInfo.CheckInterrupts();
@@ -199,7 +190,7 @@ DWORD XAudio2SoundDriver::AddBuffer(BYTE *start, DWORD length)
 	lastLength = length;
 
 	// Gracefully waiting for filled buffers to deplete
-	if (configSyncAudio == true || configSyncAudio == true)
+	if (configSyncAudio == true || configForceSync == true)
 		while (filledBuffers == 10) Sleep(1);
 	else 
 		if (filledBuffers == 10) return 0;
@@ -227,9 +218,11 @@ DWORD XAudio2SoundDriver::AddBuffer(BYTE *start, DWORD length)
 	xa2buff.pContext = &bufferLength[writeBuffer];
 	xa2buff.AudioBytes = length;
 	xa2buff.pAudioData = bufferData[writeBuffer];
-	g_source->SubmitSourceBuffer(&xa2buff);
+	if (canPlay)
+		g_source->SubmitSourceBuffer(&xa2buff);
 
-	writeBuffer = ++writeBuffer % 10;
+	++writeBuffer;
+	writeBuffer %= 10;
 
 	if (bufferBytes < cacheSize || configForceSync == true)
 	{
@@ -272,7 +265,11 @@ DWORD XAudio2SoundDriver::GetReadStatus()
 {
 	XAUDIO2_VOICE_STATE xvs;
 	int retVal;
-	g_source->GetState(&xvs);
+
+	if (canPlay)
+		g_source->GetState(&xvs);
+	else
+		return 0;
 
 //	printf("%i - %i - %i\n", xvs.SamplesPlayed, bufferLength[0], bufferLength[1]);
 
@@ -284,7 +281,7 @@ DWORD XAudio2SoundDriver::GetReadStatus()
 		retVal = (lastLength - xvs.SamplesPlayed * 4) & ~0x7;// bufferBytes % lastLength;// *(int *)xvs.pCurrentBufferContext - (int)xvs.SamplesPlayed;
 
 	if (retVal < 0) return 0; else return retVal % lastLength;
-	return 0;
+//	return 0;
 }
 
 // 100 - Mute to 0 - Full Volume
@@ -299,8 +296,10 @@ void XAudio2SoundDriver::SetVolume(DWORD volume)
 void __stdcall VoiceCallback::OnBufferEnd(void * pBufferContext)
 {
 	WaitForSingleObject(hMutex, INFINITE);
+#ifdef SEH_SUPPORTED
 	__try // PJ64 likes to close objects before it shuts down the DLLs completely...
 	{
+#endif
 		*AudioInfo.AI_STATUS_REG = AI_STATUS_DMA_BUSY;
 		if (interrupts > 0)
 		{
@@ -308,10 +307,12 @@ void __stdcall VoiceCallback::OnBufferEnd(void * pBufferContext)
 			*AudioInfo.MI_INTR_REG |= MI_INTR_AI;
 			AudioInfo.CheckInterrupts();
 		}
+#ifdef SEH_SUPPORTED
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
 	}
+#endif
 	bufferBytes -= *(int *)(pBufferContext);
 	filledBuffers--;
 	ReleaseMutex(hMutex);
@@ -319,6 +320,7 @@ void __stdcall VoiceCallback::OnBufferEnd(void * pBufferContext)
 
 void __stdcall VoiceCallback::OnVoiceProcessingPassStart(UINT32 SamplesRequired) 
 {
+	UNREFERENCED_PARAMETER(SamplesRequired);
 	//if (SamplesRequired > 0)
 	//	printf("SR: %i FB: %i BB: %i  CS:%i\n", SamplesRequired, filledBuffers, bufferBytes, cacheSize);
 }

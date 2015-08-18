@@ -11,8 +11,6 @@
 
 #include "common.h"
 #ifndef USE_XAUDIO2
-#include <windows.h>
-#include <dsound.h>
 #include <stdio.h>
 #include "DirectSoundDriver.h"
 #include "AudioSpec.h"
@@ -31,7 +29,7 @@
 // TODO: Clean this up a bit...
 DWORD last_pos = 0, write_pos = 0, play_pos = 0, temp = 0, next_pos = 0;
 DWORD last_play = 0;
-DWORD last_write = -1;
+DWORD last_write = ~0u;
 LPVOID lpvPtr1, lpvPtr2;
 DWORD dwBytes1, dwBytes2;
 int AudioInterruptTime = -1;
@@ -51,7 +49,7 @@ DWORD interruptcnt = 0;
 #ifdef STREAM_DMA
 void DirectSoundDriver::FillBuffer(BYTE *buff, DWORD len) {
 	DWORD cnt = 0;
-	DWORD writeCnt = 0;
+//	DWORD writeCnt = 0;
 	DWORD lastValue = 0;
 	// Fill buffer from play buffer
 	if (remainingBytes >= LOCK_SIZE)
@@ -132,7 +130,7 @@ DWORD WINAPI AudioThreadProc(DirectSoundDriver *ac) {
 	DWORD dwStatus;
 	DWORD last_play_pos = 0, bytesMoved = 0;
 	//LPDIRECTSOUNDBUFFER8  lpdsbuf = ac->lpdsbuf;
-	LPDIRECTSOUND8        lpds = ac->lpds;
+//	LPDIRECTSOUND8        lpds = ac->lpds;
 
 	lpdsbuff = ac->lpdsbuf;
 
@@ -149,10 +147,10 @@ DWORD WINAPI AudioThreadProc(DirectSoundDriver *ac) {
 	while (ac->audioIsDone == false) { // While the thread is still alive
 		while (last_pos == write_pos) { // Cycle around until a new buffer position is available
 			if (lpdsbuff == NULL)
-				ExitThread(-1);
+				ExitThread(~0u);
 			// Check to see if the audio pointer moved on to the next segment
 			if (write_pos == last_pos) {
-				//Sleep (0);
+				Sleep (1);
 			}
 			WaitForSingleObject(ac->hMutex, INFINITE);
 			if FAILED(lpdsbuff->GetCurrentPosition((unsigned long*)&play_pos, NULL)) {
@@ -162,7 +160,7 @@ DWORD WINAPI AudioThreadProc(DirectSoundDriver *ac) {
 			ReleaseMutex(ac->hMutex);
 			// *** Cached method ***
 			// Determine our write position by where our play position resides
-			if (play_pos < LOCK_SIZE) write_pos = (LOCK_SIZE * SEGMENTS) - LOCK_SIZE;
+			if (play_pos < LOCK_SIZE) write_pos = (LOCK_SIZE * DS_SEGMENTS) - LOCK_SIZE;
 			else write_pos = ((play_pos / LOCK_SIZE) * LOCK_SIZE) - LOCK_SIZE;
 			// *** JIT ***
 			//write_pos = ((play_pos / LOCK_SIZE) * LOCK_SIZE) + (LOCK_SIZE*2);
@@ -179,9 +177,11 @@ DWORD WINAPI AudioThreadProc(DirectSoundDriver *ac) {
 
 
 #ifdef STREAM_DMA
+#ifdef SEH_SUPPORTED
 			__try // PJ64 likes to close objects before it shuts down the DLLs completely...
 			{
-				if (play_pos > last_play_pos) bytesMoved = play_pos - last_play_pos; else bytesMoved = TOTAL_SIZE - last_play_pos + play_pos;
+#endif
+			if (play_pos > last_play_pos) bytesMoved = play_pos - last_play_pos; else bytesMoved = TOTAL_SIZE - last_play_pos + play_pos;
 			last_play_pos = play_pos;
 			if (DMALen[0] != 0 && (*AudioInfo.AI_CONTROL_REG & 0x01) == 1)
 			{
@@ -214,8 +214,8 @@ DWORD WINAPI AudioThreadProc(DirectSoundDriver *ac) {
 				writeOut = 0;
 				else
 				writeOut = LOCK_SIZE/8;			*/
-				DWORD SavedDMALen0 = DMALen[0];
-				DWORD SavedDMALen1 = DMALen[1];
+			//	DWORD SavedDMALen0 = DMALen[0];
+			//	DWORD SavedDMALen1 = DMALen[1];
 				while (writeCnt != writeOut && DMAData[0] > 0)
 				{
 					ac->SoundBuffer[ac->writeLoc++] = DMAData[0][2];
@@ -275,10 +275,12 @@ DWORD WINAPI AudioThreadProc(DirectSoundDriver *ac) {
 			{
 				//if (last_pos == write_pos)	Sleep(1);
 			}
+#ifdef SEH_SUPPORTED
 			}
 			__except (EXCEPTION_EXECUTE_HANDLER)
 			{
 			}
+#endif
 #endif
 		}
 		// This means we had a buffer segment skipped skip
@@ -291,8 +293,8 @@ DWORD WINAPI AudioThreadProc(DirectSoundDriver *ac) {
 
 		// Set out next anticipated segment
 		next_pos = write_pos + LOCK_SIZE;
-		if (next_pos >= (LOCK_SIZE*SEGMENTS)) {
-			next_pos -= (LOCK_SIZE*SEGMENTS);
+		if (next_pos >= (LOCK_SIZE*DS_SEGMENTS)) {
+			next_pos -= (LOCK_SIZE*DS_SEGMENTS);
 		}
 		if (ac->audioIsDone == true) break;
 		// Fill queue buffer here with LOCK_SIZE
@@ -320,7 +322,7 @@ _exit_:
 	ReleaseMutex(ac->hMutex);
 	ac->handleAudioThread = NULL;
 	ExitThread(0);
-	return 0;
+//	return 0;
 }
 
 
@@ -354,14 +356,16 @@ void DirectSoundDriver::SetSegmentSize(DWORD length) {
 	memset(&dsbdesc, 0, sizeof(DSBUFFERDESC));
 	dsbdesc.dwSize = sizeof(DSBUFFERDESC);
 	//dsbdesc.dwFlags = DSBCAPS_GLOBALFOCUS | DSBCAPS_CTRLPOSITIONNOTIFY;
+#if defined(_XBOX)
+	dsbdesc.dwFlags	= DSBCAPS_CTRLPOSITIONNOTIFY;
+#else
 	dsbdesc.dwFlags = DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_LOCSOFTWARE;
-	dsbdesc.dwBufferBytes = SegmentSize * SEGMENTS;
+#endif
+	dsbdesc.dwBufferBytes = SegmentSize * DS_SEGMENTS;
 	dsbdesc.lpwfxFormat = &wfm;
 
-	if (FAILED(hr = IDirectSound_CreateSoundBuffer(lpds, &dsbdesc, &lpdsbuf, NULL))) {
-		__asm int 3;
-		return;
-	}
+	hr = IDirectSound_CreateSoundBuffer(lpds, &dsbdesc, &lpdsbuf, NULL);
+	assert(!FAILED(hr));
 
 	IDirectSoundBuffer_Play(lpdsbuf, 0, 0, DSBPLAY_LOOPING);
 	lpdsbuff = this->lpdsbuf;
@@ -370,7 +374,7 @@ void DirectSoundDriver::SetSegmentSize(DWORD length) {
 
 LPDIRECTSOUNDBUFFER lpdsb = NULL;
 // TODO: Should clear out AI registers on romopen and initialize
-BOOL DirectSoundDriver::Initialize(HWND hwnd) {
+BOOL DirectSoundDriver::Initialize() {
 	audioIsPlaying = FALSE;
 
 	DSBUFFERDESC        dsPrimaryBuff;
@@ -384,12 +388,16 @@ BOOL DirectSoundDriver::Initialize(HWND hwnd) {
 
 	WaitForSingleObject(hMutex, INFINITE);
 
-	if (FAILED(hr = DirectSoundCreate8(NULL, &lpds, NULL))) {
-		__asm int 3;
-		return -1;
-	}
+#if defined(_XBOX)
+	hr = DirectSoundCreate(NULL, &lpds, NULL);
+#else
+	hr = DirectSoundCreate8(NULL, &lpds, NULL);
+#endif
+//	assert(!FAILED(hr)); // This happens if there is no sound device.
+	if (FAILED(hr))
+		return -2;
 
-	if (FAILED(hr = IDirectSound_SetCooperativeLevel(lpds, hwnd, DSSCL_PRIORITY))) {
+	if (FAILED(hr = IDirectSound_SetCooperativeLevel(lpds, AudioInfo.hwnd, DSSCL_PRIORITY))) {
 		return -1;
 	}
 
@@ -400,7 +408,11 @@ BOOL DirectSoundDriver::Initialize(HWND hwnd) {
 	memset(&dsPrimaryBuff, 0, sizeof(DSBUFFERDESC));
 
 	dsPrimaryBuff.dwSize = sizeof(DSBUFFERDESC);
+#if defined(_XBOX)
+	dsPrimaryBuff.dwFlags = DSBCAPS_CTRLPOSITIONNOTIFY;
+#else
 	dsPrimaryBuff.dwFlags = DSBCAPS_PRIMARYBUFFER | DSBCAPS_CTRLVOLUME;
+#endif
 	dsPrimaryBuff.dwBufferBytes = 0;
 	dsPrimaryBuff.lpwfxFormat = NULL;
 	memset(&wfm, 0, sizeof(WAVEFORMATEX));
@@ -458,26 +470,17 @@ void DirectSoundDriver::DeInitialize() {
 
 // Buffer Functions for the Audio Code
 void DirectSoundDriver::SetFrequency(DWORD Frequency2) {
+
 	DWORD Frequency = Frequency2;
 	BOOL bAudioPlaying = audioIsPlaying;
+
 	printf("SetFrequency()\n");
 	// MusyX - (Frequency / 80) * 4
 	// 
 	if (bAudioPlaying == TRUE) {
 		StopAudio();
 	}
-	/*
-	if (Frequency < 45000 && Frequency > 43000) {
-	Frequency = 44100;
-	}
-	else if (Frequency < 33000 && Frequency > 31000)	{
-	Frequency = 32000;
-	}
-	else if (Frequency < 25000 && Frequency > 20000)	{
-	Frequency = 22050;
-	} else if (Frequency < 15000 && Frequency > 10000) {
-	Frequency = 11025;
-	}*/
+
 	sLOCK_SIZE = (Frequency / 80) * 4;// 0x600;// (22050 / 30) * 4;// 0x4000;// (Frequency / 60) * 4;
 	SampleRate = Frequency;
 	SegmentSize = 0; // Trash it... we need to redo the Frequency anyway...
@@ -499,8 +502,8 @@ void DirectSoundDriver::AiUpdate(BOOL Wait) {
 
 	if (Wait)
 		WaitMessage();
-	return;
 
+#if 0
 	if (configForceSync && (*AudioInfo.AI_STATUS_REG & 0x80000000)) {
 		if (remainingBytes < LOCK_SIZE * 2) {
 			*AudioInfo.AI_STATUS_REG &= ~0x80000000;
@@ -509,6 +512,7 @@ void DirectSoundDriver::AiUpdate(BOOL Wait) {
 			interruptcnt--;
 		}
 	}
+#endif
 }
 
 #ifdef STREAM_DMA
@@ -702,9 +706,10 @@ DWORD DirectSoundDriver::GetReadStatus() {
 	if (configAIEmulation == true) {
 #ifdef STREAM_DMA
 		return DMALen[0] & ~7;
-		if (remainingBytes < LOCK_SIZE)
-			return 0;
-		else return DMALen[0] & ~3;
+	//	if (remainingBytes < LOCK_SIZE)
+	//		return 0;
+	//	else
+	//		return DMALen[0] & ~3;
 #else
 		if (remainingBytes < (LOCK_SIZE * 2)) {
 			return 0;
@@ -725,8 +730,8 @@ DWORD DirectSoundDriver::GetReadStatus() {
 
 void DirectSoundDriver::SetVolume(DWORD volume) {
 	DWORD dsVolume = (DWORD)((volume * -25));
-	if (volume == 100) dsVolume = DSBVOLUME_MIN;
-	if (volume = 0) dsVolume = DSBVOLUME_MAX;
+	if (volume == 100) dsVolume = (DWORD)DSBVOLUME_MIN;
+	if (volume == 0) dsVolume = DSBVOLUME_MAX;
 	if (lpdsb != NULL) lpdsb->SetVolume(dsVolume);
 }
 

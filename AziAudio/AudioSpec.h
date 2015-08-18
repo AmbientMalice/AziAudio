@@ -7,7 +7,7 @@ http://www.egroups.com/group/Plugin64-Dev
 Notes:
 ------
 
-Setting the approprate bits in the MI_INTR_REG and calling CheckInterrupts which 
+Setting the appropriate bits in the MI_INTR_REG and calling CheckInterrupts which 
 are both passed to the DLL in InitiateAudio will generate an Interrupt from with in 
 the plugin.
 
@@ -15,7 +15,8 @@ the plugin.
 #ifndef _AUDIO_H_INCLUDED__
 #define _AUDIO_H_INCLUDED__
 
-#include <windows.h>
+#include "common.h"
+#include "my_types.h"
 //#include "Audio #1.1EXT.h"
 
 #if defined(__cplusplus)
@@ -25,9 +26,6 @@ extern "C" {
 /* Note: BOOL, BYTE, WORD, DWORD, TRUE, FALSE are defined in windows.h */
 
 #define PLUGIN_TYPE_AUDIO			3
-
-#define EXPORT						__declspec(dllexport)
-#define CALL						_cdecl
 
 #define SYSTEM_NTSC					0
 #define SYSTEM_PAL					1
@@ -45,7 +43,7 @@ typedef struct {
 	   if it does not support it */
 	BOOL NormalMemory;   /* a normal BYTE array */ 
 	BOOL MemoryBswaped;  /* a normal BYTE array where the memory has been pre
-	                          bswap on a dword (32 bits) boundry */
+	                          bswap on a dword (32 bits) boundary */
 } PLUGIN_INFO;
 
 
@@ -54,7 +52,7 @@ typedef struct {
 	HINSTANCE hinst;
 
 	BOOL MemoryBswaped;    // If this is set to TRUE, then the memory has been pre
-	                       //   bswap on a dword (32 bits) boundry 
+	                       //   bswap on a dword (32 bits) boundary 
 						   //	eg. the first 8 bytes are stored like this:
 	                       //        4 3 2 1   8 7 6 5
 	BYTE * HEADER;	// This is the rom header (first 40h bytes of the rom
@@ -85,7 +83,7 @@ typedef struct {
                SYSTEM_MPAL	2
   output:   none
 *******************************************************************/ 
-EXPORT void CALL AiDacrateChanged (int  SystemType);
+EXPORT void CALL AiDacrateChanged(int SystemType);
 
 /******************************************************************
   Function: AiLenChanged
@@ -94,7 +92,7 @@ EXPORT void CALL AiDacrateChanged (int  SystemType);
   input:    none
   output:   none
 *******************************************************************/ 
-EXPORT void CALL AiLenChanged (void);
+EXPORT void CALL AiLenChanged(void);
 
 /******************************************************************
   Function: AiReadLength
@@ -103,21 +101,21 @@ EXPORT void CALL AiLenChanged (void);
   input:    none
   output:   The amount of bytes still left to play.
 *******************************************************************/ 
-EXPORT DWORD CALL AiReadLength (void);
+EXPORT DWORD CALL AiReadLength(void);
 
 /******************************************************************
   Function: AiUpdate
   Purpose:  This function is called to allow the dll to update
             things on a regular basis (check how long to sound to
-			go, copy more stuff to the buffer, anyhting you like).
+			go, copy more stuff to the buffer, anything you like).
 			The function is designed to go in to the message loop
 			of the main window ... but can be placed anywhere you 
 			like.
   input:    if Wait is set to true, then this function should wait
-            till there is a messgae in the its message queue.
+            till there is a message in the its message queue.
   output:   none
 *******************************************************************/ 
-EXPORT void CALL AiUpdate (BOOL Wait);
+EXPORT void CALL AiUpdate(BOOL Wait);
 
 /******************************************************************
   Function: CloseDLL
@@ -126,7 +124,7 @@ EXPORT void CALL AiUpdate (BOOL Wait);
   input:    none
   output:   none
 *******************************************************************/ 
-EXPORT void CALL CloseDLL (void);
+EXPORT void CALL CloseDLL(void);
 
 /******************************************************************
   Function: DllAbout
@@ -135,7 +133,7 @@ EXPORT void CALL CloseDLL (void);
   input:    a handle to the window that calls this function
   output:   none
 *******************************************************************/ 
-EXPORT void CALL DllAbout ( HWND hParent );
+EXPORT void CALL DllAbout(HWND hParent);
 
 /******************************************************************
   Function: DllConfig
@@ -144,7 +142,7 @@ EXPORT void CALL DllAbout ( HWND hParent );
   input:    a handle to the window that calls this function
   output:   none
 *******************************************************************/ 
-EXPORT void CALL DllConfig ( HWND hParent );
+EXPORT void CALL DllConfig(HWND hParent);
 
 /******************************************************************
   Function: DllTest
@@ -153,17 +151,17 @@ EXPORT void CALL DllConfig ( HWND hParent );
   input:    a handle to the window that calls this function
   output:   none
 *******************************************************************/ 
-EXPORT void CALL DllTest ( HWND hParent );
+EXPORT void CALL DllTest(HWND hParent);
 
 /******************************************************************
   Function: GetDllInfo
   Purpose:  This function allows the emulator to gather information
             about the dll by filling in the PluginInfo structure.
-  input:    a pointer to a PLUGIN_INFO stucture that needs to be
+  input:    a pointer to a PLUGIN_INFO structure that needs to be
             filled by the function. (see def above)
   output:   none
 *******************************************************************/ 
-EXPORT void CALL GetDllInfo ( PLUGIN_INFO * PluginInfo );
+EXPORT void CALL GetDllInfo(PLUGIN_INFO * PluginInfo);
 
 /******************************************************************
   Function: InitiateSound
@@ -180,7 +178,7 @@ EXPORT void CALL GetDllInfo ( PLUGIN_INFO * PluginInfo );
   and then call the function CheckInterrupts to tell the emulator
   that there is a waiting interrupt.
 *******************************************************************/ 
-EXPORT BOOL CALL InitiateAudio (AUDIO_INFO Audio_Info);
+EXPORT BOOL CALL InitiateAudio(AUDIO_INFO Audio_Info);
 
 /******************************************************************
   Function: ProcessAList
@@ -198,11 +196,11 @@ EXPORT void CALL ProcessAList(void);
   input:    none
   output:   none
 *******************************************************************/ 
-EXPORT void CALL RomClosed (void);
-EXPORT void CALL RomOpened(void);
+EXPORT void CALL RomClosed(void);
+EXPORT void CALL RomOpen(void);
 EXPORT void CALL PluginLoaded(void);
 
-EXPORT void CALL AiCallBack (void);
+EXPORT void CALL AiCallBack(void);
 
 extern AUDIO_INFO AudioInfo;
 
